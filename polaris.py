@@ -39,6 +39,10 @@ def prepare_input(calc_params, strengths):
      dipo
       {{ direction }} {{ strength }}
 
+    &scf
+    """
+
+    """
     &rasscf
      charge
       {{ calc.charge }}
@@ -119,12 +123,14 @@ def run():
     # Nur Startstärke und Anzahl der Felder auswählen,
     # die Funktion macht dann den Rest.
 
-    strengths = 0.001 * np.array((1, -1, 2, -2, 4, -4))
+    strengths = 0.002 * np.array((1, -1, 2, -2, 4, -4))
     fields = strengths.size
     calc_params = {
-        "xyz": "/home/carpx/Arbeit/polaris/ammoniak/backup/symmetry.xyz",
-        "xyz": "/scratch/molcas_jobs/nh3_inversion/backup/01_relaxed_scan/nh3_inversion.Opt.15.xyz",
-        "basis": "ano-rcc-vdzp",
+        # "xyz": "/home/carpx/Arbeit/polaris/ammoniak/backup/symmetry.xyz",
+        # "xyz": "/scratch/molcas_jobs/nh3_inversion/backup/01_relaxed_scan/nh3_inversion.Opt.15.xyz",
+        "xyz": "/scratch/polarisierbarkeit/geometrien/formaldehyd.xyz",
+        # "basis": "ano-rcc-vdzp",
+        "basis": "aug-cc-pvdz",
         "charge": 0,
         "spin": 1,
         "fileorb": "/scratch/molcas_jobs/nh3_inversion/backup/05_casscf_pes/nh3_inversion.15.RasOrb",
@@ -136,7 +142,8 @@ def run():
     # with open("job.last", "w") as handle:
         # handle.write(text)
     # return
-    with open("job.last") as handle:
+    fn = "job.last.scf.formaldehyd"
+    with open(fn) as handle:
         text = handle.read()
     ens, dpms = parse_log(text)
     np.savetxt("energies", ens)
@@ -155,7 +162,7 @@ def run():
     sum1 = dpms[0] + dpms[1]
     diff1 = dpms[0] - dpms[1]
     diff2 = dpms[2] - dpms[3]
-    alphs = ((2/3)*diff1 - (1/12)*diff2)/0.001
+    alphs = ((2/3)*diff1 - (1/12)*diff2)/0.002
     # (XYZ), (ciroot), (DPM components)
     diff1 = diff1.reshape(3, -1, 3)
 
@@ -172,21 +179,11 @@ def run():
     avg_alphas = np.sum(cd, axis=1)*1/3
     import pdb; pdb.set_trace()
 
-    # diff_ = lambda arr: arr[np.array((0, 2, 4))] - arr[np.array((1, 3, 5))]
-    # one = dpms[:6]
-    # d_one = diff_(one)
-    # two = dpms[6:12]
-    # d_two = diff_(two)
-    # four = dpms[12:]
-    # d_four = diff_(four)
-    # print(ens)
-    # print(dpms)
     # axes = (0, 1, 2)
-    # tensor_axes = it.product(axes, axes)
-    tensor_axes = it.combinations_with_replacement(axes, 2)
-    for i, j in tensor_axes:
-        fd = finit_diff(i, j, d_one, d_two, d_four, 0.001)
-        print(i, j, ":", fd)
+    # tensor_axes = it.combinations_with_replacement(axes, 2)
+    # for i, j in tensor_axes:
+        # fd = finit_diff(i, j, d_one, d_two, d_four, 0.001)
+        # print(i, j, ":", fd)
 
 
 if __name__ == "__main__":
