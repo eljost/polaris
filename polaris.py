@@ -22,8 +22,41 @@ import numpy as np
 np.set_printoptions(suppress=True, precision=4)
 
 
-def prepare_input(calc_params, strengths):
-    tpl = """
+def prepare_input(calc_params, strength):
+    def str2tpl(tpl_str):
+        return Template(textwrap.dedent(tpl_str))
+
+    scf_tpl_str = """
+    &scf
+     prorbitals
+      0
+    """
+    scf_tpl = str2tpl(scf_tpl_str)
+
+    ras_tpl_str = """
+    &rasscf
+     charge
+      {{ calc.charge }}
+     spin
+      {{ calc.spin }}
+     fileorb
+      {{ calc.fileorb }}
+     ciroot
+      {{ calc.ciroot }} {{ calc.ciroot }} 1
+     thrs
+      1.0e-12,1.0e-4,1.0e-4
+    """
+    ras_tpl = str2tpl(ras_tpl_str)
+
+    method_dict = {
+        "scf": scf_tpl,
+        "ras": ras_tpl,
+    }
+
+    # Render method string
+    method_str = method_dict[calc_params["method"]].render(calc=calc_params)
+
+    inp_tpl_str = """
     &gateway
      coord
       {{ calc.xyz }}
@@ -39,27 +72,17 @@ def prepare_input(calc_params, strengths):
      dipo
       {{ direction }} {{ strength }}
 
-    &scf
+    {{ method_str }}
     """
+    inp_tpl = str2tpl(inp_tpl_str)
 
-    """
-    &rasscf
-     charge
-      {{ calc.charge }}
-     spin
-      {{ calc.spin }}
-     fileorb
-      {{ calc.fileorb }}
-     ciroot
-      {{ calc.ciroot }} {{ calc.ciroot }} 1
-     thrs
-      1.0e-10,1.0e-4,1.0e-4
-    """
-    template = Template(textwrap.dedent(tpl))
     directions = "X Y Z".split()
+    strengths = strength * np.array((1, -1))
     product = list(it.product(strengths, directions))
+
     job_input = "\n".join(
-        [template.render(direction=d, strength=s, calc=calc_params)
+        [inp_tpl.render(direction=d, strength=s, calc=calc_params,
+                        method_str=method_str)
          for s, d in product]
     )
     job_order = product
@@ -107,9 +130,29 @@ def central_difference(i, j, diff_, strength):
     return diff_ / (2*strength)
 
 
-def two_fields(i, j, d_one, d_two, strength):
-    # alpha = 
-    pass
+def two_fields(diff1, diff2, strength):
+    return ((2/3)*diff1 - (1/12)*diff2) / strength
+
+
+def get_diff(calc_params, F):
+    print(f"Running calculations for F={F}")
+    job_input, job_order = prepare_input(calc_params, F)
+    job_order_str = " ".join([f"({s:.3f} {d})" for s, d in job_order])
+    text = run_molcas(job_input)
+    with open("job.last", "w") as handle:
+        handle.write(text)
+    _, dpms = parse_log(text)
+    np.savetxt("dipoles", dpms)
+
+    # Drop the total component
+    dpms = dpms[:,:3]
+    # Reshape dpms into two halves, the plus-F half and the minus-F half
+    dpms = dpms.reshape(2, -1, 3)
+    # Convert from Debye to a.u.
+    dpms /= 2.5418
+
+    diff = dpms[0] - dpms[1]
+    return diff
 
 
 def run():
@@ -120,70 +163,49 @@ def run():
     # job = prepare_input(0.001)
     # print(job)
 
-    # Nur Startstärke und Anzahl der Felder auswählen,
-    # die Funktion macht dann den Rest.
+    fields = 2
+    F0 = 0.002
+    base = 2
+    # Geometric series
+    strengths = F0 * np.power(base, range(fields))
 
-    strengths = 0.002 * np.array((1, -1, 2, -2, 4, -4))
-    fields = strengths.size
-    calc_params = {
-        # "xyz": "/home/carpx/Arbeit/polaris/ammoniak/backup/symmetry.xyz",
-        # "xyz": "/scratch/molcas_jobs/nh3_inversion/backup/01_relaxed_scan/nh3_inversion.Opt.15.xyz",
-        "xyz": "/scratch/polarisierbarkeit/geometrien/formaldehyd.xyz",
-        # "basis": "ano-rcc-vdzp",
-        "basis": "aug-cc-pvdz",
+    nh3_ras_params = {
+        "xyz": "/scratch/molcas_jobs/nh3_inversion/backup/01_relaxed_scan/nh3_inversion.Opt.15.xyz",
+        "basis": "ano-rcc-vdzp",
         "charge": 0,
         "spin": 1,
         "fileorb": "/scratch/molcas_jobs/nh3_inversion/backup/05_casscf_pes/nh3_inversion.15.RasOrb",
-        "ciroot": 5,
+        "ciroot": 2,
+        "method": "ras",
     }
-    job_input, job_order = prepare_input(calc_params, strengths)
-    job_order_str = " ".join([f"({s:.3f} {d})" for s, d in job_order])
-    # text = run_molcas(job_input)
-    # with open("job.last", "w") as handle:
-        # handle.write(text)
-    # return
-    fn = "job.last.scf.formaldehyd"
-    with open(fn) as handle:
-        text = handle.read()
-    ens, dpms = parse_log(text)
-    np.savetxt("energies", ens)
-    np.savetxt("dipoles", dpms)
-    ens = ens.reshape(strengths.size, 3, -1)
-    # Drop the total component
-    dpms = dpms[:,:3]
-    dpms = dpms.reshape(strengths.size, -1, 3)
-    # Shape (No. of electric fields, No. of states * 3, dipole components)
-    # dpms = dpms.reshape(strengths.size, 3, -1, 4)
 
-    # Convert from Debye to a.u.
-    dpms /= 2.5418
+    form_hf_params = {
+        "xyz": "/scratch/polarisierbarkeit/geometrien/formaldehyd.xyz",
+        "basis": "aug-cc-pvdz",
+        "charge": 0,
+        "spin": 1,
+        "method": "scf",
+    }
 
+    calc_params = form_hf_params
+    # calc_params = nh3_ras_params
 
-    sum1 = dpms[0] + dpms[1]
-    diff1 = dpms[0] - dpms[1]
-    diff2 = dpms[2] - dpms[3]
-    alphs = ((2/3)*diff1 - (1/12)*diff2)/0.002
-    # (XYZ), (ciroot), (DPM components)
-    diff1 = diff1.reshape(3, -1, 3)
+    diffs = [get_diff(calc_params, F) for F in strengths]
+    print("Diffs")
+    print(diffs)
 
-    cd = diff1/0.002
-    print("cd")
-    print(cd)
-    ax = "XYZ"
-    import pdb; pdb.set_trace()
+    ff_funcs = {
+        2: two_fields,
+    }
+
+    alphas = ff_funcs[fields](*diffs, F0)
+
+    ax = "xyz"
     for i in range(3):
-        print(f"alpha_{ax[i]}{ax[i]}")
-        a = cd[i][:,i]
-        print(a)
-    return
-    avg_alphas = np.sum(cd, axis=1)*1/3
-    import pdb; pdb.set_trace()
-
-    # axes = (0, 1, 2)
-    # tensor_axes = it.combinations_with_replacement(axes, 2)
-    # for i, j in tensor_axes:
-        # fd = finit_diff(i, j, d_one, d_two, d_four, 0.001)
-        # print(i, j, ":", fd)
+        a = alphas[i][i]
+        print(f"α_{ax[i]}{ax[i]}: {a:.2f}")
+    mean_alpha = np.sum(np.diag(alphas))/3
+    print(f"mean(α) = {mean_alpha:.2f}")
 
 
 if __name__ == "__main__":
