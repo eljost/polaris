@@ -121,15 +121,6 @@ def parse_log(text):
     return ens, dpms
 
 
-def finit_diff(i, j, d_one, d_two, d_four, strength):
-    alpha = (256*d_one[j][i] - 40*d_two[j][i] + d_four[j][i])/(360*strength)
-    return alpha
-
-
-def central_difference(i, j, diff_, strength):
-    return diff_ / (2*strength)
-
-
 def two_fields(diff1, diff2, strength):
     return ((2/3)*diff1 - (1/12)*diff2) / strength
 
@@ -139,10 +130,15 @@ def get_diff(calc_params, F):
     job_input, job_order = prepare_input(calc_params, F)
     job_order_str = " ".join([f"({s:.3f} {d})" for s, d in job_order])
     text = run_molcas(job_input)
-    with open("job.last", "w") as handle:
+    print(job_order_str)
+
+    fn_base = f"calc_{F:.4f}"
+    log_fn = fn_base + ".log"
+    dpms_fn = fn_base + "_dpms.dat"
+    with open(log_fn, "w") as handle:
         handle.write(text)
     _, dpms = parse_log(text)
-    np.savetxt("dipoles", dpms)
+    np.savetxt(dpms_fn, dpms)
 
     # Drop the total component
     dpms = dpms[:,:3]
@@ -156,13 +152,6 @@ def get_diff(calc_params, F):
 
 
 def run():
-    # with open("05_ffpt_test.out") as handle:
-        # text = handle.read()
-    # ens, dpms = parse_log(text)
-
-    # job = prepare_input(0.001)
-    # print(job)
-
     fields = 2
     F0 = 0.002
     base = 2
