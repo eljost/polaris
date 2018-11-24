@@ -190,6 +190,16 @@ def get_diff(calc_params, F):
     return diff
 
 
+def name_for_calc(calc_params, F0, fields):
+    # XYZ method basis
+    xyz = Path(calc_params["xyz"]).stem
+    method = calc_params["method"]
+    basis = calc_params["basis"]
+    basis = basis.replace("-", "")
+
+    return f"{xyz}_{method}_{basis}_{F0}_{fields}"
+
+
 def parse_args(args):
     parser = argparse.ArgumentParser()
 
@@ -210,6 +220,7 @@ def run():
     F0 = args.F0
     fields = args.fields
 
+    name = name_for_calc(calc_params, F0, fields)
     alpha_list = get_pol(calc_params, F0, fields)
 
     ax = "xyz"
@@ -220,6 +231,9 @@ def run():
         mean = np.mean(alphas)
         print(f"mean(α) = {mean:.4f}")
         print()
+    alpha_list = np.array(alpha_list)
+    np.savetxt(name, alpha_list)
+    print(f"Saved alphas to '{name}'")
 
 
 def get_pol(calc_params, F0, fields):
