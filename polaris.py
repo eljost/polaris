@@ -19,6 +19,7 @@ import subprocess
 import sys
 import tempfile
 import textwrap
+import time
 
 from jinja2 import Template
 import numpy as np
@@ -26,6 +27,24 @@ import yaml
 
 
 np.set_printoptions(suppress=True, precision=4)
+
+
+def one_field(diff1, strength):
+    return diff1 / (2*strength)
+
+
+def two_fields(diff1, diff2, strength):
+    return ((2/3)*diff1 - (1/12)*diff2) / strength
+
+
+def three_fields(diff1, diff2, diff4, strength):
+    return (256*diff1 - 40*diff2 + diff4) / (360 * strength)
+
+FF_FUNCS = {
+    1: one_field,
+    2: two_fields,
+    3: three_fields,
+}
 
 
 def prepare_input(calc_params, strength):
@@ -140,16 +159,16 @@ def parse_log(text):
     return ens, dpms
 
 
-def two_fields(diff1, diff2, strength):
-    return ((2/3)*diff1 - (1/12)*diff2) / strength
-
-
 def get_diff(calc_params, F):
     print(f"Running calculations for F={F}")
     job_input, job_order = prepare_input(calc_params, F)
     job_order_str = " ".join([f"({s:.3f} {d})" for s, d in job_order])
-    text = run_molcas(job_input)
     print(job_order_str)
+    start = time.time()
+    text = run_molcas(job_input)
+    end = time.time()
+    calc_time = end - start
+    print(f"Calculations took {end-start:.0f}s")
     print()
 
     fn_base = f"calc_{F:.4f}"
@@ -177,7 +196,7 @@ def parse_args(args):
     parser.add_argument("yaml")
 
     parser.add_argument("--F0", type=float, default=0.002)
-    parser.add_argument("--fields", type=int, choices=(2, ), default=2)
+    parser.add_argument("--fields", type=int, choices=FF_FUNCS.keys(), default=2)
 
     return parser.parse_args(args)
 
@@ -191,7 +210,16 @@ def run():
     F0 = args.F0
     fields = args.fields
 
-    get_pol(calc_params, F0, fields)
+    alpha_list = get_pol(calc_params, F0, fields)
+
+    ax = "xyz"
+    for state, alphas in enumerate(alpha_list):
+        print(f"State {state}")
+        for i, a in enumerate(alphas):
+            print(f"α_{ax[i]}{ax[i]}: {a:.4f}")
+        mean = np.mean(alphas)
+        print(f"mean(α) = {mean:.4f}")
+        print()
 
 
 def get_pol(calc_params, F0, fields):
@@ -208,23 +236,14 @@ def get_pol(calc_params, F0, fields):
         # diffs = pool.map(get_diff_partial, strengths)
     # diffs = map(get_diff_partial, strengths)
 
-    ff_funcs = {
-        2: two_fields,
-    }
-
-    alphas = ff_funcs[fields](*diffs, F0)
+    alphas = FF_FUNCS[fields](*diffs, F0)
     alphas = alphas.reshape(3, -1, 3)
 
-    ax = "xyz"
+    alpha_list = list()
     for state in range(alphas.shape[1]):
-        print(f"State {state}")
-        alphas_per_state = alphas[:,state,:]
-        for i in range(3):
-            a = alphas_per_state[i][i]
-            print(f"α_{ax[i]}{ax[i]}: {a:.4f}")
-        mean_alpha = np.sum(np.diag(alphas_per_state))/3
-        print(f"mean(α) = {mean_alpha:.4f}")
-        print()
+        alphas_per_state = [alphas[:,state,:][i][i] for i in range(3)]
+        alpha_list.append(alphas_per_state)
+    return alpha_list
 
 
 if __name__ == "__main__":
