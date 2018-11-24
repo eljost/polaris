@@ -7,7 +7,9 @@ https://www.researchgate.net/post/Can_anyone_explain_how_I_can_calculate_the_pol
 Computational Aspects of Electric Polarizability Calculations p. 255 ff.
 """
 
+from functools import partial
 import itertools as it
+import multiprocessing
 import re
 import os
 from pathlib import Path
@@ -27,7 +29,6 @@ np.set_printoptions(suppress=True, precision=4)
 def prepare_input(calc_params, strength):
     def str2tpl(tpl_str):
         return Template(textwrap.dedent(tpl_str))
-    pprint(calc_params)
 
     scf_tpl_str = """
     &scf
@@ -192,6 +193,7 @@ def run():
         "charge": 0,
         "spin": 1,
         "method": "scf",
+        "nosym": True,
     }
 
     form_ras_params = {
@@ -225,7 +227,14 @@ def run():
     # calc_params = form_ras_params
     # calc_params = aceton_ras_params
 
+
+    pprint(calc_params)
     diffs = [get_diff(calc_params, F) for F in strengths]
+
+    # get_diff_partial = partial(get_diff, calc_params)
+    # with multiprocessing.Pool(2) as pool:
+        # diffs = pool.map(get_diff_partial, strengths)
+    # diffs = map(get_diff_partial, strengths)
 
     ff_funcs = {
         2: two_fields,
