@@ -11,7 +11,9 @@ import itertools as it
 import re
 import os
 from pathlib import Path
+from pprint import pprint
 import subprocess
+import sys
 import tempfile
 import textwrap
 
@@ -25,6 +27,7 @@ np.set_printoptions(suppress=True, precision=4)
 def prepare_input(calc_params, strength):
     def str2tpl(tpl_str):
         return Template(textwrap.dedent(tpl_str))
+    pprint(calc_params)
 
     scf_tpl_str = """
     &scf
@@ -41,8 +44,10 @@ def prepare_input(calc_params, strength):
       {{ calc.spin }}
      fileorb
       {{ calc.fileorb }}
+     {% if calc.ciroot %}
      ciroot
       {{ calc.ciroot }} {{ calc.ciroot }} 1
+     {% endif %}
      thrs
       1.0e-12,1.0e-4,1.0e-4
     """
@@ -63,8 +68,10 @@ def prepare_input(calc_params, strength):
      basis
       {{ calc.basis }}
      ricd
+     {% if calc.nosym %}
      group
       nosym
+     {% endif %}
 
     &seward
 
@@ -118,6 +125,15 @@ def parse_log(text):
     dpm_re = "X=\s*([\d\.E\-\+]+)\s*Y=\s*([\d\.E\-\+]+)\s*Z=\s*" \
              "([\d\.E\-\+]+)\s*Total=\s*([\d\.E\-\+]+)\s*"
     dpms = np.array(re.findall(dpm_re, text), dtype=float)
+    rc_re = "/rc=_(\w+)_"
+    return_codes = re.findall(rc_re, text)
+    fails = [i for i, rc in enumerate(return_codes)
+             if rc != "RC_ALL_IS_WELL"
+    ]
+    if fails:
+        print("Expected returncode 'RC_ALL_IS_WELL', but got:")
+        print([return_codes[i] for i in fails])
+        sys.exit()
     return ens, dpms
 
 
@@ -131,6 +147,7 @@ def get_diff(calc_params, F):
     job_order_str = " ".join([f"({s:.3f} {d})" for s, d in job_order])
     text = run_molcas(job_input)
     print(job_order_str)
+    print()
 
     fn_base = f"calc_{F:.4f}"
     log_fn = fn_base + ".log"
@@ -164,8 +181,9 @@ def run():
         "charge": 0,
         "spin": 1,
         "fileorb": "/scratch/molcas_jobs/nh3_inversion/backup/05_casscf_pes/nh3_inversion.15.RasOrb",
-        "ciroot": 2,
+        "ciroot": 5,
         "method": "ras",
+        "nosym": True,
     }
 
     form_hf_params = {
@@ -176,26 +194,60 @@ def run():
         "method": "scf",
     }
 
-    calc_params = form_hf_params
-    # calc_params = nh3_ras_params
+    form_ras_params = {
+        "xyz": "/scratch/polarisierbarkeit/geometrien/formaldehyd.xyz",
+        "basis": "aug-cc-pvdz",
+        "charge": 0,
+        "spin": 1,
+        "method": "ras",
+        "ciroot": 3,
+        "fileorb": "/scratch/polarisierbarkeit/mcref/formaldehyd/backup/03_rasscf/formaldehyd.RasOrb",
+    }
+
+    h2o_cas_params =  {
+        "charge": 0,
+        "spin": 1,
+        "xyz": "/scratch/polarisierbarkeit/mcref/h2o/backup/h2o_c2v.xyz",
+        "method": "ras",
+    }
+
+    aceton_ras_params = {
+        "charge": 0,
+        "spin": 1,
+        "method": "ras",
+        "basis": "aug-cc-pvtz",
+        "xyz": "/scratch/polarisierbarkeit/mcref/aceton/backup/aceton.xyz",
+        "fileorb": "/scratch/polarisierbarkeit/mcref/aceton/backup/04_rasscf_ss/aceton.RasOrb",
+    }
+
+    # calc_params = form_hf_params
+    calc_params = nh3_ras_params
+    # calc_params = form_ras_params
+    # calc_params = aceton_ras_params
 
     diffs = [get_diff(calc_params, F) for F in strengths]
-    print("Diffs")
-    print(diffs)
 
     ff_funcs = {
         2: two_fields,
     }
 
     alphas = ff_funcs[fields](*diffs, F0)
+    alphas = alphas.reshape(3, -1, 3)
 
     ax = "xyz"
-    for i in range(3):
-        a = alphas[i][i]
-        print(f"α_{ax[i]}{ax[i]}: {a:.2f}")
-    mean_alpha = np.sum(np.diag(alphas))/3
-    print(f"mean(α) = {mean_alpha:.2f}")
+    for state in range(alphas.shape[1]):
+        print(f"State {state}")
+        alphas_per_state = alphas[:,state,:]
+        for i in range(3):
+            a = alphas_per_state[i][i]
+            print(f"α_{ax[i]}{ax[i]}: {a:.4f}")
+        mean_alpha = np.sum(np.diag(alphas_per_state))/3
+        print(f"mean(α) = {mean_alpha:.4f}")
+        print()
 
 
 if __name__ == "__main__":
     run()
+    # with open("calc_0.0020.log") as handle:
+        # text = handle.read()
+    # parse_log(text)
