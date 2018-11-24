@@ -95,7 +95,12 @@ def prepare_input(calc_params, strength):
     }
 
     # Render method string
-    method_str = method_dict[calc_params["method"]].render(calc=calc_params)
+    try:
+        method_str = method_dict[calc_params["method"]].render(calc=calc_params)
+    except KeyError:
+        avail_methods = ", ".join(method_dict.keys())
+        print(f"Invalid method! Valid methods are: {avail_methods}")
+        sys.exit()
 
     inp_tpl_str = """
     &gateway
@@ -136,6 +141,7 @@ def run_molcas(job_input):
     assert "MOLCAS" in os.environ, "$MOLCAS isn't set!"
 
     with tempfile.TemporaryDirectory() as tmp_dir:
+        print(f"Running in {tmp_dir}")
         tmp_path = Path(tmp_dir)
         job_fn  = "openmolcas.in"
         job_path = tmp_path / job_fn
@@ -174,7 +180,7 @@ def parse_log(text):
 
 
 def get_diff(calc_params, F):
-    print(f"Running calculations for F={F}")
+    print(f"Starting calculations for F={F}")
     job_input, job_order = prepare_input(calc_params, F)
     job_order_str = " ".join([f"({s:.3f} {d})" for s, d in job_order])
     print(job_order_str)
@@ -271,9 +277,9 @@ def get_pol(calc_params, F0, fields):
     diffs = [get_diff(calc_params, F) for F in strengths]
 
     # get_diff_partial = partial(get_diff, calc_params)
+    # diffs = map(get_diff_partial, strengths)
     # with multiprocessing.Pool(2) as pool:
         # diffs = pool.map(get_diff_partial, strengths)
-    # diffs = map(get_diff_partial, strengths)
 
     alphas = FF_FUNCS[fields](*diffs, F0)
     alphas = alphas.reshape(3, -1, 3)
