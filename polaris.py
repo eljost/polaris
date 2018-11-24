@@ -7,6 +7,7 @@ https://www.researchgate.net/post/Can_anyone_explain_how_I_can_calculate_the_pol
 Computational Aspects of Electric Polarizability Calculations p. 255 ff.
 """
 
+import argparse
 from functools import partial
 import itertools as it
 import multiprocessing
@@ -21,6 +22,7 @@ import textwrap
 
 from jinja2 import Template
 import numpy as np
+import yaml
 
 
 np.set_printoptions(suppress=True, precision=4)
@@ -169,66 +171,36 @@ def get_diff(calc_params, F):
     return diff
 
 
+def parse_args(args):
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument("yaml")
+
+    parser.add_argument("--F0", type=float, default=0.002)
+    parser.add_argument("--fields", type=int, choices=(2, ), default=2)
+
+    return parser.parse_args(args)
+
+
 def run():
-    fields = 2
-    F0 = 0.002
+    args = parse_args(sys.argv[1:])
+
+    with open(args.yaml) as handle:
+        calc_params = yaml.load(handle)
+
+    F0 = args.F0
+    fields = args.fields
+
+    get_pol(calc_params, F0, fields)
+
+
+def get_pol(calc_params, F0, fields):
     base = 2
     # Geometric series
     strengths = F0 * np.power(base, range(fields))
 
-    nh3_ras_params = {
-        "xyz": "/scratch/molcas_jobs/nh3_inversion/backup/01_relaxed_scan/nh3_inversion.Opt.15.xyz",
-        "basis": "ano-rcc-vdzp",
-        "charge": 0,
-        "spin": 1,
-        "fileorb": "/scratch/molcas_jobs/nh3_inversion/backup/05_casscf_pes/nh3_inversion.15.RasOrb",
-        "ciroot": 5,
-        "method": "ras",
-        "nosym": True,
-    }
-
-    form_hf_params = {
-        "xyz": "/scratch/polarisierbarkeit/geometrien/formaldehyd.xyz",
-        "basis": "aug-cc-pvdz",
-        "charge": 0,
-        "spin": 1,
-        "method": "scf",
-        "nosym": True,
-    }
-
-    form_ras_params = {
-        "xyz": "/scratch/polarisierbarkeit/geometrien/formaldehyd.xyz",
-        "basis": "aug-cc-pvdz",
-        "charge": 0,
-        "spin": 1,
-        "method": "ras",
-        "ciroot": 3,
-        "fileorb": "/scratch/polarisierbarkeit/mcref/formaldehyd/backup/03_rasscf/formaldehyd.RasOrb",
-    }
-
-    h2o_cas_params =  {
-        "charge": 0,
-        "spin": 1,
-        "xyz": "/scratch/polarisierbarkeit/mcref/h2o/backup/h2o_c2v.xyz",
-        "method": "ras",
-    }
-
-    aceton_ras_params = {
-        "charge": 0,
-        "spin": 1,
-        "method": "ras",
-        "basis": "aug-cc-pvtz",
-        "xyz": "/scratch/polarisierbarkeit/mcref/aceton/backup/aceton.xyz",
-        "fileorb": "/scratch/polarisierbarkeit/mcref/aceton/backup/04_rasscf_ss/aceton.RasOrb",
-    }
-
-    calc_params = form_hf_params
-    # calc_params = nh3_ras_params
-    # calc_params = form_ras_params
-    # calc_params = aceton_ras_params
-
-
     pprint(calc_params)
+    print()
     diffs = [get_diff(calc_params, F) for F in strengths]
 
     # get_diff_partial = partial(get_diff, calc_params)
@@ -257,6 +229,3 @@ def run():
 
 if __name__ == "__main__":
     run()
-    # with open("calc_0.0020.log") as handle:
-        # text = handle.read()
-    # parse_log(text)
