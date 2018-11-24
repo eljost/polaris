@@ -231,10 +231,6 @@ def run():
 
     with open(args.yaml) as handle:
         calc_params = yaml.load(handle)
-    # inp, _ = prepare_input(calc_params, 0.001)
-    # with open("inp", "w") as handle:
-        # handle.write(inp)
-    # return
 
     F0 = args.F0
     fields = args.fields
