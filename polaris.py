@@ -71,13 +71,27 @@ def prepare_input(calc_params, strength):
       {{ calc.ciroot }} {{ calc.ciroot }} 1
      {% endif %}
      thrs
-      1.0e-12,1.0e-4,1.0e-4
+      1.0e-10,1.0e-4,1.0e-4
     """
     ras_tpl = str2tpl(ras_tpl_str)
+
+    caspt2_tpl_str = ras_tpl_str + \
+    """
+    &caspt2
+     {% if calc.ciroot %}
+     multistate
+      {{ calc.ciroot }} {% for root in range(calc.ciroot) %}{{ root+1 }} {% endfor %}
+     shift
+      0.3
+     {% endif %}
+     properties
+    """
+    caspt2_tpl = str2tpl(caspt2_tpl_str)
 
     method_dict = {
         "scf": scf_tpl,
         "ras": ras_tpl,
+        "caspt2": caspt2_tpl,
     }
 
     # Render method string
@@ -207,6 +221,7 @@ def parse_args(args):
 
     parser.add_argument("--F0", type=float, default=0.002)
     parser.add_argument("--fields", type=int, choices=FF_FUNCS.keys(), default=2)
+    parser.add_argument("--name", default="")
 
     return parser.parse_args(args)
 
@@ -216,16 +231,30 @@ def run():
 
     with open(args.yaml) as handle:
         calc_params = yaml.load(handle)
+    # inp, _ = prepare_input(calc_params, 0.001)
+    # with open("inp", "w") as handle:
+        # handle.write(inp)
+    # return
 
     F0 = args.F0
     fields = args.fields
 
-    name = name_for_calc(calc_params, F0, fields)
+    name = args.name
+    if not name:
+        name = name_for_calc(calc_params, F0, fields)
     alpha_list = get_pol(calc_params, F0, fields)
 
     ax = "xyz"
     for state, alphas in enumerate(alpha_list):
-        print(f"State {state}")
+        state_str = f"State {state}"
+        # With CASPT2 we got results for two methods, CASSCF and CASPT2,
+        # so we handle this a bit different
+        if calc_params["method"] == "caspt2":
+            state_mod = state % 2
+            state = state // 2
+            method = "CASPT2" if state_mod else "CASSCF"
+            state_str = f"State {state}, {method}"
+        print(state_str)
         for i, a in enumerate(alphas):
             print(f"α_{ax[i]}{ax[i]}: {a:.4f}")
         mean = np.mean(alphas)
