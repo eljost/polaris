@@ -220,8 +220,8 @@ def run():
         "fileorb": "/scratch/polarisierbarkeit/mcref/aceton/backup/04_rasscf_ss/aceton.RasOrb",
     }
 
-    # calc_params = form_hf_params
-    calc_params = nh3_ras_params
+    calc_params = form_hf_params
+    # calc_params = nh3_ras_params
     # calc_params = form_ras_params
     # calc_params = aceton_ras_params
 
